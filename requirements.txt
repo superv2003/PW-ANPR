@@ -1,0 +1,32 @@
+# ============================================================================
+# PARKWIZ ANPR Service — Python Dependencies
+# ============================================================================
+# Install: pip install -r requirements.txt
+# ============================================================================
+
+# --- Web Framework ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+
+# --- Database (MSSQL via ODBC) ---
+pyodbc==5.2.0
+
+# --- Templating (for dashboard) ---
+Jinja2==3.1.5
+
+# --- Validation / Utilities ---
+pydantic==2.10.5
+
+# --- Testing ---
+httpx==0.28.1
+pytest==8.3.4
+pytest-asyncio==0.25.0
+
+# --- CV Pipeline Dependencies ---
+# (also listed in requirements_cv.txt for standalone CV testing)
+opencv-python-headless==4.11.0.86
+numpy==2.2.3
+onnxruntime==1.20.1
+paddlepaddle==3.0.0b1
+paddleocr==2.9.1
+easyocr==1.7.2

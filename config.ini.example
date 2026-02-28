@@ -1,0 +1,52 @@
+; ============================================================================
+; PARKWIZ ANPR Service — Site Configuration
+; ============================================================================
+; Copy this file to "config.ini" and edit for your site.
+; This file is read ONCE at service startup.
+; To apply changes, restart the service or call POST /api/v1/admin/reload-config.
+;
+; Lines starting with ; or # are comments.
+; ============================================================================
+
+[service]
+host = 0.0.0.0
+port = 8765
+log_level = INFO
+workers = 1                    ; Always 1 — concurrency is handled by ThreadPoolExecutor
+
+; Optional API key for securing the /capture endpoint.
+; Leave empty to disable auth (acceptable for isolated local networks).
+; If set, clients must send header: X-API-Key: <value>
+api_key =
+
+[database]
+server = PW\V2019
+database = PARKWIZ
+trusted_connection = no
+username = sa
+password = pwiz
+driver = ODBC Driver 17 for SQL Server
+pool_size = 5
+
+[camera]
+rtsp_username = admin
+rtsp_password = admin123
+rtsp_port = 554
+rtsp_path = /Streaming/Channels/101
+
+[storage]
+image_dir = C:\ParkwizANPR\plate_images
+log_dir = C:\ParkwizANPR\logs
+retention_days = 30
+
+[performance]
+; Number of CV pipeline worker threads.  0 = auto-detect (cpu_count // 2).
+max_workers = 0
+; Maximum time (seconds) to wait for a single /capture request before timing out.
+request_timeout_sec = 5
+; Maximum time (seconds) to wait for RTSP camera connection.
+camera_connect_timeout_sec = 3
+; How often (seconds) to refresh the lane config cache from the database.
+lane_cache_refresh_sec = 60
+; Max simultaneous capture requests per lane (protects against duplicate triggers).
+per_lane_concurrency = 2

@@ -1,0 +1,12 @@
+# Core CV and Inference
+opencv-python-headless
+numpy
+onnxruntime
+
+# OCR Engines
+paddlepaddle
+paddleocr
+easyocr
+
+# For downloading models/utils if needed
+requests

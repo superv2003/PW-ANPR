@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PARKWIZ ANPR — Dashboard</title>
+    <style>
+        :root {
+            --bg-primary: #0f1117;
+            --bg-card: #1a1d27;
+            --bg-card-hover: #22263a;
+            --border: #2a2e3e;
+            --text: #e1e4ec;
+            --text-dim: #8b8fa3;
+            --accent: #6c63ff;
+            --accent-glow: rgba(108, 99, 255, 0.15);
+            --green: #22c55e;
+            --green-bg: rgba(34, 197, 94, 0.1);
+            --red: #ef4444;
+            --red-bg: rgba(239, 68, 68, 0.1);
+            --yellow: #eab308;
+            --yellow-bg: rgba(234, 179, 8, 0.1);
+            --radius: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            min-height: 100vh;
+        }
+
+        /* ── Header ─────────────────────── */
+        .header {
+            background: linear-gradient(135deg, #1a1d27 0%, #0f1117 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+            color: #fff;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+
+        .header h1 span {
+            color: var(--accent);
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.healthy {
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+        }
+
+        .status-dot.degraded {
+            background: var(--yellow);
+            box-shadow: 0 0 8px var(--yellow);
+        }
+
+        .status-dot.offline {
+            background: var(--red);
+            box-shadow: 0 0 8px var(--red);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .status-text {
+            font-size: 13px;
+            color: var(--text-dim);
+        }
+
+        .refresh-badge {
+            font-size: 11px;
+            background: var(--accent-glow);
+            color: var(--accent);
+            padding: 4px 10px;
+            border-radius: 20px;
+            border: 1px solid rgba(108, 99, 255, 0.2);
+        }
+
+        /* ── Layout ─────────────────────── */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px 32px;
+        }
+
+        /* ── Stat Cards ────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        .stat-value.green {
+            color: var(--green);
+        }
+
+        .stat-value.yellow {
+            color: var(--yellow);
+        }
+
+        .stat-value.red {
+            color: var(--red);
+        }
+
+        /* ── Search & Controls ────────── */
+        .controls-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .search-box {
+            flex: 1;
+            min-width: 240px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 10px 16px 10px 40px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-box input:focus {
+            border-color: var(--accent);
+        }
+
+        .search-box::before {
+            content: "🔍";
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+        }
+
+        .lane-filter {
+            padding: 10px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            cursor: pointer;
+            min-width: 140px;
+        }
+
+        .lane-filter:focus {
+            border-color: var(--accent);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg-card);
+            color: var(--text);
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn:hover {
+            border-color: var(--accent);
+            background: var(--bg-card-hover);
+        }
+
+        .btn.primary {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .btn.primary:hover {
+            opacity: 0.9;
+        }
+
+        /* ── Per-Lane Stats ────────────── */
+        .lane-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .lane-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 14px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .lane-chip:hover {
+            border-color: var(--accent);
+        }
+
+        .lane-chip .lane-name {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+
+        .lane-chip .lane-count {
+            font-size: 20px;
+            font-weight: 700;
+        }
+
+        .lane-chip .lane-rate {
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        /* ── Table ──────────────────────── */
+        .table-container {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .table-title {
+            padding: 16px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            padding: 10px 16px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            color: var(--text-dim);
+            border-bottom: 1px solid var(--border);
+            background: rgba(0, 0, 0, 0.15);
+            position: sticky;
+            top: 0;
+        }
+
+        td {
+            padding: 10px 16px;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(42, 46, 62, 0.5);
+        }
+
+        tr:hover td {
+            background: var(--bg-card-hover);
+        }
+
+        .plate-badge {
+            background: var(--accent-glow);
+            color: var(--accent);
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-family: 'Consolas', monospace;
+            letter-spacing: 0.5px;
+        }
+
+        .conf-bar-bg {
+            width: 60px;
+            height: 6px;
+            background: var(--border);
+            border-radius: 3px;
+            display: inline-block;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .conf-bar {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s;
+        }
+
+        .error-tag {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .error-tag.no-plate {
+            background: var(--yellow-bg);
+            color: var(--yellow);
+        }
+
+        .error-tag.error {
+            background: var(--red-bg);
+            color: var(--red);
+        }
+
+        .success-tag {
+            background: var(--green-bg);
+            color: var(--green);
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .time-cell {
+            color: var(--text-dim);
+            font-size: 12px;
+        }
+
+        .ms-cell {
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-dim);
+        }
+
+        .empty-state .emoji {
+            font-size: 36px;
+            margin-bottom: 12px;
+        }
+
+        /* ── Responsive ─────────────────── */
+        @media (max-width: 768px) {
+            .container {
+                padding: 16px;
+            }
+
+            .header {
+                padding: 12px 16px;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            td,
+            th {
+                padding: 8px 10px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">PW</div>
+            <h1>PARK<span>WIZ</span> ANPR</h1>
+        </div>
+        <div class="header-right">
+            <span class="status-dot" id="statusDot"></span>
+            <span class="status-text" id="statusText">Connecting...</span>
+            <span class="refresh-badge" id="refreshBadge">Auto-refresh: 5s</span>
+        </div>
+    </div>
+
+    <div class="container">
+
+        <!-- Stat Cards -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+                <div class="stat-label">Total Today</div>
+                <div class="stat-value" id="statTotal">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Successful</div>
+                <div class="stat-value green" id="statSuccess">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Success Rate</div>
+                <div class="stat-value" id="statRate">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Avg. Processing</div>
+                <div class="stat-value" id="statAvgMs">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Uptime</div>
+                <div class="stat-value" id="statUptime">—</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">DB Status</div>
+                <div class="stat-value" id="statDb">—</div>
+            </div>
+        </div>
+
+        <!-- Per-Lane Stats -->
+        <div class="lane-stats" id="laneStats"></div>
+
+        <!-- Controls -->
+        <div class="controls-bar">
+            <div class="search-box">
+                <input type="text" id="plateSearch" placeholder="Search by plate number..." />
+            </div>
+            <select class="lane-filter" id="laneFilter">
+                <option value="">All Lanes</option>
+            </select>
+            <button class="btn" onclick="reloadConfig()">↻ Reload Config</button>
+            <button class="btn" style="color:var(--yellow); border-color:var(--yellow);" onclick="triggerCapture()">⚡
+                Trigger Capture</button>
+            <button class="btn primary" onclick="fetchLogs()">Refresh Now</button>
+        </div>
+
+        <!-- Captures Table -->
+        <div class="table-container">
+            <div class="table-title">
+                <span>Recent Captures</span>
+                <span id="logCount" style="font-size:12px; color:var(--text-dim);">—</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Lane</th>
+                            <th>Plate</th>
+                            <th>Confidence</th>
+                            <th>Method</th>
+                            <th>Speed</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logsBody">
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                <div class="emoji">📡</div>
+                                Loading captures...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin + '/api/v1';
+        let refreshTimer = null;
+
+        // ── Helpers ──────────────────────────
+        function fmt(dt) {
+            if (!dt) return '—';
+            const d = new Date(dt);
+            return d.toLocaleTimeString('en-IN', { hour12: false }) + '.' +
+                String(d.getMilliseconds()).padStart(3, '0');
+        }
+
+        function fmtUptime(secs) {
+            if (!secs && secs !== 0) return '—';
+            const h = Math.floor(secs / 3600);
+            const m = Math.floor((secs % 3600) / 60);
+            if (h > 0) return h + 'h ' + m + 'm';
+            return m + 'm ' + (secs % 60) + 's';
+        }
+
+        function confColor(c) {
+            if (c >= 0.8) return 'var(--green)';
+            if (c >= 0.5) return 'var(--yellow)';
+            return 'var(--red)';
+        }
+
+        // ── Fetch Health ─────────────────────
+        async function fetchHealth() {
+            try {
+                const r = await fetch(API_BASE + '/health');
+                const d = await r.json();
+
+                const dot = document.getElementById('statusDot');
+                const txt = document.getElementById('statusText');
+                dot.className = 'status-dot ' + d.status;
+                txt.textContent = d.status.charAt(0).toUpperCase() + d.status.slice(1) +
+                    ' • v' + d.version;
+
+                document.getElementById('statUptime').textContent = fmtUptime(d.uptime_seconds);
+                const dbEl = document.getElementById('statDb');
+                dbEl.textContent = d.db_connected ? 'Connected' : 'Down';
+                dbEl.className = 'stat-value ' + (d.db_connected ? 'green' : 'red');
+            } catch (e) {
+                document.getElementById('statusDot').className = 'status-dot offline';
+                document.getElementById('statusText').textContent = 'Offline';
+            }
+        }
+
+        // ── Fetch Stats ──────────────────────
+        async function fetchStats() {
+            try {
+                const r = await fetch(API_BASE + '/stats');
+                const d = await r.json();
+
+                document.getElementById('statTotal').textContent = d.total_captures_today;
+                document.getElementById('statSuccess').textContent = d.successful_today;
+
+                const rateEl = document.getElementById('statRate');
+                rateEl.textContent = d.overall_success_rate + '%';
+                rateEl.className = 'stat-value ' +
+                    (d.overall_success_rate >= 80 ? 'green' :
+                        d.overall_success_rate >= 50 ? 'yellow' : 'red');
+
+                document.getElementById('statAvgMs').textContent =
+                    d.avg_processing_ms ? d.avg_processing_ms + 'ms' : '—';
+
+                // Per-lane chips
+                const container = document.getElementById('laneStats');
+                const filter = document.getElementById('laneFilter');
+                const existingLanes = new Set();
+                filter.querySelectorAll('option').forEach(o => existingLanes.add(o.value));
+
+                container.innerHTML = d.per_lane.map(l => `
+                    <div class="lane-chip">
+                        <div class="lane-name">Lane ${l.lane_number}</div>
+                        <div class="lane-count">${l.total_captures}</div>
+                        <div class="lane-rate" style="color:${l.success_rate >= 80 ? 'var(--green)' : l.success_rate >= 50 ? 'var(--yellow)' : 'var(--red)'}">
+                            ${l.success_rate}% success
+                        </div>
+                    </div>
+                `).join('');
+
+                // Update lane filter dropdown
+                d.per_lane.forEach(l => {
+                    if (!existingLanes.has(l.lane_number)) {
+                        const opt = document.createElement('option');
+                        opt.value = l.lane_number;
+                        opt.textContent = 'Lane ' + l.lane_number;
+                        filter.appendChild(opt);
+                    }
+                });
+            } catch (e) { /* silent */ }
+        }
+
+        // ── Fetch Logs ───────────────────────
+        async function fetchLogs() {
+            try {
+                let url = API_BASE + '/logs?limit=50';
+                const lane = document.getElementById('laneFilter').value;
+                const plate = document.getElementById('plateSearch').value.trim();
+                if (lane) url += '&lane=' + encodeURIComponent(lane);
+                if (plate) url += '&plate=' + encodeURIComponent(plate);
+
+                const r = await fetch(url);
+                const data = await r.json();
+
+                document.getElementById('logCount').textContent = data.length + ' entries';
+
+                const body = document.getElementById('logsBody');
+                if (data.length === 0) {
+                    body.innerHTML = `<tr><td colspan="7" class="empty-state">
+                        <div class="emoji">📭</div>No captures found</td></tr>`;
+                    return;
+                }
+
+                body.innerHTML = data.map(r => {
+                    const hasPlate = r.plate && !r.error_code;
+                    const conf = r.confidence || 0;
+                    const confPct = Math.round(conf * 100);
+                    const barColor = confColor(conf);
+
+                    let statusHtml;
+                    if (hasPlate) {
+                        statusHtml = '<span class="success-tag">✓ OK</span>';
+                    } else if (r.error_code === 'NO_PLATE_DETECTED') {
+                        statusHtml = '<span class="error-tag no-plate">No Plate</span>';
+                    } else {
+                        statusHtml = '<span class="error-tag error">' + (r.error_code || 'Error') + '</span>';
+                    }
+
+                    return `<tr>
+                        <td class="time-cell">${fmt(r.captured_at)}</td>
+                        <td><strong>${r.lane_number}</strong></td>
+                        <td>${r.plate ? '<span class="plate-badge">' + r.plate + '</span>' : '<span style="color:var(--text-dim)">—</span>'}</td>
+                        <td>
+                            <span class="conf-bar-bg"><span class="conf-bar" style="width:${confPct}%; background:${barColor}"></span></span>
+                            ${confPct}%
+                        </td>
+                        <td style="color:var(--text-dim); font-size:12px">${r.detection_method || '—'}</td>
+                        <td class="ms-cell">${r.processing_ms ? r.processing_ms + 'ms' : '—'}</td>
+                        <td>${statusHtml}</td>
+                    </tr>`;
+                }).join('');
+            } catch (e) {
+                console.error('Log fetch error:', e);
+            }
+        }
+
+        // ── Reload Config ────────────────────
+        async function reloadConfig() {
+            try {
+                const r = await fetch(API_BASE + '/admin/reload-config', { method: 'POST' });
+                const d = await r.json();
+                alert(d.message || 'Config reloaded');
+            } catch (e) {
+                alert('Failed to reload config');
+            }
+        }
+
+        // ── Trigger Capture ──────────────────
+        let cachedApiKey = "";
+        async function triggerCapture() {
+            const lane = prompt('Enter Lane Number to trigger a capture (e.g., L1):');
+            if (!lane) return;
+
+            const payload = {
+                lane_number: lane,
+                org_id: "PARKWIZ"
+            };
+
+            const doFetch = async (key) => {
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+                if (key) headers['X-API-Key'] = key;
+
+                return fetch(API_BASE + '/capture', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(payload)
+                });
+            };
+
+            try {
+                let r = await doFetch(cachedApiKey);
+
+                // If 401 Unauthorized, prompt for API Key and retry
+                if (r.status === 401) {
+                    cachedApiKey = prompt('API Key required. Please enter it:');
+                    if (!cachedApiKey) return;
+                    r = await doFetch(cachedApiKey);
+                }
+
+                if (!r.ok) {
+                    const err = await r.json();
+                    alert(`Error ${r.status}: ${err.detail || 'Capture failed'}`);
+                    return;
+                }
+
+                const d = await r.json();
+                console.log(d);
+                if (d.error_code) {
+                    alert(`Capture Completed but with Error: ${d.error_code}`);
+                } else {
+                    alert(`✅ Capture Successful!\nPlate: ${d.plate} (${Math.round((d.confidence || 0) * 100)}%)\nSpeed: ${d.processing_ms}ms`);
+                }
+
+                // Immediately refresh table
+                fetchStats();
+                fetchLogs();
+            } catch (e) {
+                console.error(e);
+                alert('Network error while triggering capture');
+            }
+        }
+
+        // ── Search / Filter listeners ────────
+        let searchTimeout;
+        document.getElementById('plateSearch').addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(fetchLogs, 400);
+        });
+        document.getElementById('laneFilter').addEventListener('change', fetchLogs);
+
+        // ── Auto-refresh (5s) ────────────────
+        function startRefresh() {
+            fetchHealth();
+            fetchStats();
+            fetchLogs();
+            refreshTimer = setInterval(() => {
+                fetchHealth();
+                fetchStats();
+                fetchLogs();
+            }, 5000);
+        }
+
+        startRefresh();
+    </script>
+</body>
+
+</html>

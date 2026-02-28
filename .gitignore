@@ -1,0 +1,64 @@
+# ============================================================================
+# PARKWIZ ANPR Service — .gitignore
+# Enterprise-grade exclusion rules
+# ============================================================================
+
+# ── Python ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual Environments ────────────────────────────────────────────────────
+venv*/
+.venv/
+env/
+
+# ── IDE / Editor ────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+
+# ── Testing / Coverage ─────────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# ── Secrets & Site-Specific Config ──────────────────────────────────────────
+# NEVER commit real credentials. Only config.ini.example is tracked.
+config.ini
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+logs/
+*.log
+log_output/
+
+# ── Debug Artifacts ─────────────────────────────────────────────────────────
+debug_output/
+debug_*.txt
+debug_*.jpg
+rtsp_output.txt
+test_out.txt
+
+# ── Plate Images (runtime data) ────────────────────────────────────────────
+plate_images/
+
+# ── Old Reference Repos (not part of this project) ─────────────────────────
+temp_repo/
+License_Plate_Detection_with_YOLOV8n_and_PaddleOCR/
+
+# ── OS Files ────────────────────────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ── ONNX models tracked via Git LFS (see .gitattributes) ───────────────────
+# Models ARE tracked, but through LFS — do NOT add them here.
