@@ -85,6 +85,8 @@ async def process_capture(
     camera_ip = lane_cfg.camera_ip
     rtsp_user = settings.camera.rtsp_username
     rtsp_pass = settings.camera.rtsp_password
+    rtsp_port = settings.camera.rtsp_port
+    rtsp_path = settings.camera.rtsp_path
 
     # ── 2. Acquire per-lane semaphore ───────────────────────────────────
     sem = _get_lane_semaphore(lane_number)
@@ -106,6 +108,8 @@ async def process_capture(
                     camera_ip=camera_ip,
                     rtsp_user=rtsp_user,
                     rtsp_pass=rtsp_pass,
+                    rtsp_port=rtsp_port,
+                    rtsp_path=rtsp_path,
                     lane_number=lane_number,
                 ),
                 timeout=settings.performance.request_timeout_sec,

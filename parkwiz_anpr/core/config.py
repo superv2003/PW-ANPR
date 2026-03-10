@@ -48,7 +48,7 @@ class DatabaseSettings:
 @dataclass
 class CameraSettings:
     rtsp_username: str = "admin"
-    rtsp_password: str = "admin123"
+    rtsp_password: str = "intozi@123"
     rtsp_port: int = 554
     rtsp_path: str = "/Streaming/Channels/101"
 
@@ -70,12 +70,20 @@ class PerformanceSettings:
 
 
 @dataclass
+class PollingSettings:
+    enabled: bool = False
+    lanes: str = ""  # Comma-separated list of lanes to poll (e.g., "26,27")
+    interval_ms: int = 500
+
+
+@dataclass
 class Settings:
     service: ServiceSettings = field(default_factory=ServiceSettings)
     database: DatabaseSettings = field(default_factory=DatabaseSettings)
     camera: CameraSettings = field(default_factory=CameraSettings)
     storage: StorageSettings = field(default_factory=StorageSettings)
     performance: PerformanceSettings = field(default_factory=PerformanceSettings)
+    polling: PollingSettings = field(default_factory=PollingSettings)
 
     def __repr__(self) -> str:
         """Masks sensitive fields in logs."""
@@ -165,6 +173,13 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         settings.performance.per_lane_concurrency = int(
             p.get("per_lane_concurrency", str(settings.performance.per_lane_concurrency))
         )
+
+    # --- [polling] ---
+    if cfg.has_section("polling"):
+        pl = cfg["polling"]
+        settings.polling.enabled = _parse_bool(pl.get("enabled", "no"))
+        settings.polling.lanes = pl.get("lanes", settings.polling.lanes)
+        settings.polling.interval_ms = int(pl.get("interval_ms", str(settings.polling.interval_ms)))
 
     # Auto-detect workers if set to 0
     if settings.performance.max_workers <= 0:

@@ -276,3 +276,29 @@ async def fetch_lane_configs() -> list[dict]:
             return []
 
     return await asyncio.get_running_loop().run_in_executor(None, _query)
+
+
+async def fetch_hdd_read_write(lanes: list[str]) -> list[dict]:
+    """Fetch recent activity from tblHDDReadWrite for configured lanes."""
+
+    def _query():
+        if not lanes:
+            return []
+            
+        placeholders = ",".join("?" * len(lanes))
+        sql = f"""
+        SELECT HDDID, sDataRequest, UpdateDateTime 
+        FROM tblHDDReadWrite
+        WHERE HDDID IN ({placeholders})
+        """
+        try:
+            with get_pool().get_connection() as conn:
+                cursor = conn.execute(sql, *lanes)
+                columns = [col[0] for col in cursor.description]
+                rows = cursor.fetchall()
+                return [dict(zip(columns, row)) for row in rows]
+        except Exception as e:
+            logger.error(f"Failed to fetch HDDReadWrite: {e}")
+            return []
+
+    return await asyncio.get_running_loop().run_in_executor(None, _query)

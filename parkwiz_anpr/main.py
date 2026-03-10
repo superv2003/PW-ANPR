@@ -35,6 +35,7 @@ from parkwiz_anpr.core.lane_config import lane_cache
 from parkwiz_anpr.core.image_store import image_store
 from parkwiz_anpr.api.v1.capture import router as capture_router
 from parkwiz_anpr.api.v1.admin import router as admin_router, set_start_time
+from parkwiz_anpr.services.polling_service import polling_service
 
 
 # ─── Logging Setup ──────────────────────────────────────────────────────────
@@ -124,8 +125,22 @@ async def lifespan(app: FastAPI):
     # 3. LPR Pipeline warmup — eliminate first-request cold-start
     try:
         from lpr_engine.pipeline import LPRPipeline
-        LPRPipeline.initialize()
-        logger.info("LPR Pipeline models pre-loaded ✅")
+        import urllib.parse
+        
+        # Build camera_map from enabled lanes to pre-start persistent RTSP streams
+        camera_map = {}
+        enc_u = urllib.parse.quote_plus(settings.camera.rtsp_username)
+        enc_p = urllib.parse.quote_plus(settings.camera.rtsp_password)
+        r_port = settings.camera.rtsp_port
+        r_path = settings.camera.rtsp_path
+        
+        for lane in lane_cache.all_lanes():
+            if lane.enabled and lane.active and lane.camera_ip:
+                url = f"rtsp://{enc_u}:{enc_p}@{lane.camera_ip}:{r_port}{r_path}"
+                camera_map[lane.lane_number] = url
+
+        LPRPipeline.initialize(camera_map=camera_map)
+        logger.info("LPR Pipeline models and persistent streams pre-loaded ✅")
 
         # Warmup pass (if available)
         if hasattr(LPRPipeline, "warmup"):
@@ -137,6 +152,9 @@ async def lifespan(app: FastAPI):
     # 4. Image cleanup task
     image_store.start_cleanup_task()
 
+    # 5. Background DB Polling test service (if enabled)
+    await polling_service.start()
+
     elapsed = int((time.time() - start) * 1000)
     logger.info(f"PW-ANPR Service ready ✅ (startup took {elapsed}ms)")
 
@@ -144,6 +162,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("PARKWIZ ANPR Service shutting down...")
+    await polling_service.stop()
     await lane_cache.stop()
     await image_store.stop()
     await database.close()
