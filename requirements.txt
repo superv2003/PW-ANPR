@@ -25,7 +25,7 @@ pytest-asyncio==0.25.0
 # --- CV Pipeline Dependencies ---
 # (also listed in requirements_cv.txt for standalone CV testing)
 opencv-python-headless==4.11.0.86
-numpy==2.2.3
+numpy==1.26.4
 onnxruntime==1.20.1
 paddlepaddle==3.0.0b1
 paddleocr==2.9.1
