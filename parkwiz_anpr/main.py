@@ -136,7 +136,9 @@ async def lifespan(app: FastAPI):
         
         for lane in lane_cache.all_lanes():
             if lane.enabled and lane.active and lane.camera_ip:
-                url = f"rtsp://{enc_u}:{enc_p}@{lane.camera_ip}:{r_port}{r_path}"
+                # [HARDCODED FOR TESTING] Override Lane 28 IP
+                ip_to_use = "192.168.1.63" if lane.lane_number == "28" else lane.camera_ip
+                url = f"rtsp://{enc_u}:{enc_p}@{ip_to_use}:{r_port}{r_path}"
                 camera_map[lane.lane_number] = url
 
         LPRPipeline.initialize(camera_map=camera_map)
