@@ -136,8 +136,11 @@ async def lifespan(app: FastAPI):
         
         for lane in lane_cache.all_lanes():
             if lane.enabled and lane.active and lane.camera_ip:
-                # [HARDCODED FOR TESTING] Override Lane 28 IP
-                ip_to_use = "192.168.1.63" if lane.lane_number == "28" else lane.camera_ip
+                # [HARDCODED FOR TESTING] ONLY connect to Lane 28 and use static IP
+                if lane.lane_number != "28":
+                    continue
+                
+                ip_to_use = "192.168.1.63"
                 url = f"rtsp://{enc_u}:{enc_p}@{ip_to_use}:{r_port}{r_path}"
                 camera_map[lane.lane_number] = url
 
