@@ -51,6 +51,8 @@ class CameraSettings:
     rtsp_password: str = "intozi@123"
     rtsp_port: int = 554
     rtsp_path: str = "/Streaming/Channels/101"
+    ip_overrides: dict[str, str] = field(default_factory=dict)
+    test_lanes: str = ""  # Comma-separated list of lanes to filter and only connect to
 
 
 @dataclass
@@ -145,6 +147,14 @@ def load_settings(config_path: str | Path | None = None) -> Settings:
         settings.camera.rtsp_password = c.get("rtsp_password", settings.camera.rtsp_password)
         settings.camera.rtsp_port = int(c.get("rtsp_port", str(settings.camera.rtsp_port)))
         settings.camera.rtsp_path = c.get("rtsp_path", settings.camera.rtsp_path)
+
+    # --- [camera_overrides] ---
+    if cfg.has_section("camera_overrides"):
+        co = cfg["camera_overrides"]
+        settings.camera.test_lanes = co.get("test_lanes", settings.camera.test_lanes)
+        for k, v in cfg.items("camera_overrides"):
+            if k.lower() != "test_lanes":
+                settings.camera.ip_overrides[str(k).strip()] = str(v).strip()
 
     # --- [storage] ---
     if cfg.has_section("storage"):

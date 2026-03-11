@@ -134,14 +134,17 @@ async def lifespan(app: FastAPI):
         r_port = settings.camera.rtsp_port
         r_path = settings.camera.rtsp_path
         
+        test_lanes_list = [
+            l.strip() for l in settings.camera.test_lanes.split(",") if l.strip()
+        ]
+
         for lane in lane_cache.all_lanes():
             if lane.enabled and lane.active and lane.camera_ip:
-                # [HARDCODED FOR TESTING] ONLY connect to Lane 28 and use static IP
-                if lane.lane_number != "28":
+                # Filter if test_lanes is specified
+                if test_lanes_list and lane.lane_number not in test_lanes_list:
                     continue
                 
-                ip_to_use = "192.168.1.63"
-                url = f"rtsp://{enc_u}:{enc_p}@{ip_to_use}:{r_port}{r_path}"
+                url = f"rtsp://{enc_u}:{enc_p}@{lane.camera_ip}:{r_port}{r_path}"
                 camera_map[lane.lane_number] = url
 
         LPRPipeline.initialize(camera_map=camera_map)

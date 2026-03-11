@@ -92,16 +92,28 @@ class LaneConfigCache:
         rows = await database.fetch_lane_configs()
         new_cache: dict[tuple[str, str], LaneConfig] = {}
         for row in rows:
+            lane_num = str(row.get("PMSLaneNumber", "")).strip()
+            camera_ip = str(row.get("ANPRAPIURL", "")).strip()
+            
+            # -- Override camera IP for testing --
+            if lane_num in settings.camera.ip_overrides:
+                override_ip = settings.camera.ip_overrides[lane_num]
+                logger.warning(
+                    f"[TESTING] Overriding Lane {lane_num} camera IP "
+                    f"from {camera_ip} to {override_ip}"
+                )
+                camera_ip = override_ip
+
             cfg = LaneConfig(
                 anpr_id=row.get("ANPRID", 0),
-                lane_number=str(row.get("PMSLaneNumber", "")).strip(),
+                lane_number=lane_num,
                 enabled=bool(row.get("flgEnableANPR", 0)),
                 org_id=str(row.get("ANPROrgID", "")).strip(),
                 lane_id=str(row.get("ANPRLaneID", "")).strip(),
                 public_key=str(row.get("ANPRPublicKey", "")).strip(),
                 private_key=str(row.get("ANPRPrivateKey", "")).strip(),
                 source=str(row.get("ANPRSource", "")).strip(),
-                camera_ip=str(row.get("ANPRAPIURL", "")).strip(),
+                camera_ip=camera_ip,
                 camera_ip_backup=str(row.get("ANPRAPIURL2", "")).strip(),
                 active=(str(row.get("ActiveStatus", "N")).strip().upper() == "Y"),
             )

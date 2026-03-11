@@ -21,7 +21,7 @@ class DBPollingService:
 
     def __init__(self):
         self._task: asyncio.Task | None = None
-        self._last_processed_time: dict[str, datetime] = {}
+        self._last_state: dict[str, str] = {}
 
     async def start(self):
         """Start the background polling loop if enabled in config."""
@@ -51,9 +51,8 @@ class DBPollingService:
 
     async def _poll_loop(self, lanes: list[str], interval_sec: float):
         """Infinite loop checking the database for new triggers."""
-        # Optional: fetch initial UpdateDateTime so we don't trigger on old records
-        # when the service first starts up.
-        await self._prime_last_processed_times(lanes)
+        # Optional: fetch initial states so we don't trigger if already in 'AR'
+        await self._prime_last_states(lanes)
 
         while True:
             try:
@@ -65,14 +64,14 @@ class DBPollingService:
             
             await asyncio.sleep(interval_sec)
 
-    async def _prime_last_processed_times(self, lanes: list[str]):
+    async def _prime_last_states(self, lanes: list[str]):
         """Fetch the current state of the lanes so we safely ignore past AR events."""
         rows = await database.fetch_hdd_read_write(lanes)
         for row in rows:
             lane_number = str(row.get("HDDID", ""))
-            update_dt = row.get("UpdateDateTime")
-            if lane_number and update_dt:
-                self._last_processed_time[lane_number] = update_dt
+            state = str(row.get("sDataRequest", "")).strip().upper()
+            if lane_number:
+                self._last_state[lane_number] = state
 
     async def _check_lanes(self, lanes: list[str]):
         """Query the database and trigger the pipeline for any new AR signals."""
@@ -81,32 +80,31 @@ class DBPollingService:
         for row in rows:
             lane_number = str(row.get("HDDID", ""))
             sDataRequest = str(row.get("sDataRequest", "")).strip().upper()
-            update_dt = row.get("UpdateDateTime")
 
-            if not lane_number or not update_dt:
+            if not lane_number:
                 continue
 
-            if sDataRequest == "AR":
-                last_dt = self._last_processed_time.get(lane_number)
+            last_state = self._last_state.get(lane_number)
+            
+            # Check if this is a genuinely new Arm Request (transition from NA to AR)
+            if sDataRequest == "AR" and last_state != "AR":
+                req_id = f"poll-{uuid.uuid4().hex[:6]}"
+                logger.info(
+                    f"[POLL] Detected 'AR' signal transition for lane {lane_number}. "
+                    f"Triggering shadow capture {req_id}"
+                )
                 
-                # Check if this is a genuinely new Arm Request
-                if last_dt is None or update_dt > last_dt:
-                    self._last_processed_time[lane_number] = update_dt
-                    
-                    req_id = f"poll-{uuid.uuid4().hex[:6]}"
-                    logger.info(
-                        f"[POLL] Detected 'AR' signal for lane {lane_number}. "
-                        f"Triggering shadow capture {req_id}"
+                # Fire-and-forget the capture process
+                asyncio.create_task(
+                    process_capture(
+                        lane_number=lane_number, 
+                        org_id="PARKWIZ", 
+                        request_id=req_id
                     )
-                    
-                    # Fire-and-forget the capture process
-                    asyncio.create_task(
-                        process_capture(
-                            lane_number=lane_number, 
-                            org_id="PARKWIZ", 
-                            request_id=req_id
-                        )
-                    )
+                )
+
+            # Always update the last seen state for the next check
+            self._last_state[lane_number] = sDataRequest
 
 # Singleton
 polling_service = DBPollingService()
