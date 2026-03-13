@@ -13,6 +13,7 @@ Includes per-lane semaphore to prevent duplicate-trigger storms.
 import asyncio
 import logging
 import time
+import urllib.parse
 from datetime import datetime, timezone
 
 from lpr_engine.pipeline import LPRPipeline
@@ -197,10 +198,17 @@ async def process_capture(
 
     # ── 6. Log to database (fire-and-forget) ────────────────────────────
     error_code = error if error else None
+    
+    # Strip URL credentials if an HTTP override was used, so we don't crash the 50-char DB column
+    db_camera_ip = camera_ip
+    if db_camera_ip.startswith("http://") or db_camera_ip.startswith("https://"):
+        parsed = urllib.parse.urlparse(db_camera_ip)
+        db_camera_ip = parsed.hostname or db_camera_ip
+        
     asyncio.create_task(log_capture(
         lane_number=lane_number,
         org_id=org_id,
-        camera_ip=camera_ip,
+        camera_ip=db_camera_ip,
         plate=plate,
         raw_ocr=raw_ocr,
         confidence=confidence,
@@ -215,7 +223,7 @@ async def process_capture(
     if plate:
         logger.info(
             f"[LANE-{lane_number}] [req:{request_id}] "
-            f"Plate detected: {plate} (conf={confidence}, {processing_ms}ms)"
+            f"Plate detected: {plate} (conf={confidence}, total={processing_ms}ms) Telemetry: {telemetry}"
         )
         return {
             "success": True,
@@ -233,7 +241,7 @@ async def process_capture(
     else:
         logger.info(
             f"[LANE-{lane_number}] [req:{request_id}] "
-            f"No plate detected ({error_code or 'NO_PLATE_DETECTED'}, {processing_ms}ms)"
+            f"No plate detected ({error_code or 'NO_PLATE_DETECTED'}, total={processing_ms}ms) Telemetry: {telemetry}"
         )
         return {
             "success": False,

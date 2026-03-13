@@ -4,6 +4,8 @@ import urllib.parse
 import logging
 import os
 import cv2
+import requests
+from requests.auth import HTTPDigestAuth
 from concurrent.futures import ThreadPoolExecutor
 
 from .frame_grabber import FrameGrabber, CameraManager
@@ -99,14 +101,19 @@ class LPRPipeline:
 
         start_time = time.perf_counter()
 
-        enc_user = urllib.parse.quote_plus(rtsp_user)
-        enc_pass = urllib.parse.quote_plus(rtsp_pass)
-        rtsp_url = f"rtsp://{enc_user}:{enc_pass}@{camera_ip}:{rtsp_port}{rtsp_path}"
+        # Dynamic Protocol Detection
+        # If the user supplied an HTTP URL in the DB or config override, bypass RTSP
+        if camera_ip.startswith("http://") or camera_ip.startswith("https://"):
+            camera_url = camera_ip
+        else:
+            enc_user = urllib.parse.quote_plus(rtsp_user)
+            enc_pass = urllib.parse.quote_plus(rtsp_pass)
+            camera_url = f"rtsp://{enc_user}:{enc_pass}@{camera_ip}:{rtsp_port}{rtsp_path}"
 
         loop = asyncio.get_running_loop()
         try:
             result = await loop.run_in_executor(
-                cls._executor, cls._run_pipeline_sync, rtsp_url
+                cls._executor, cls._run_pipeline_sync, camera_url
             )
         except Exception as e:
             logger.error(f"Lane {lane_number} pipeline fatal error: {e}")
@@ -117,11 +124,11 @@ class LPRPipeline:
         return result
 
     @classmethod
-    def _run_pipeline_sync(cls, rtsp_url: str) -> dict:
+    def _run_pipeline_sync(cls, camera_url: str) -> dict:
         """
         Synchronous pipeline — runs inside a worker thread.
 
-        Step 1 — grab_ms   : ~1 ms  (memory copy from CameraManager)
+        Step 1 — grab_ms   : ~1 ms  (memory copy from CameraManager or HTTP fetch)
         Step 2 — preprocess : ~18 ms
         Step 3 — detect     : ~23 ms
         Step 4 — ocr        : ~250 ms
@@ -132,7 +139,7 @@ class LPRPipeline:
 
         # 1. Grab frame from in-memory cache (CameraManager background thread)
         t0 = time.perf_counter()
-        frames, error = FrameGrabber.get_frames(rtsp_url)
+        frames, error = FrameGrabber.get_frames(camera_url)
         telemetry["grab_ms"] = int((time.perf_counter() - t0) * 1000)
 
         if error:
@@ -148,14 +155,26 @@ class LPRPipeline:
                     frame,
                 )
 
+            # 1.5 Dynamic ROI Cropping
+            # Slice away the top 35% (sky/wall/top timestamps)
+            # Slice away the bottom 15% (Camera 01 watermark)
+            # Slice away the outer 15% edges (sidewalls)
+            h, w = frame.shape[:2]
+            crop_y1 = int(h * 0.35)
+            crop_y2 = int(h * 0.85) # Cut off bottom 15% to eliminate 'Camera 01'
+            crop_x1 = int(w * 0.15)
+            crop_x2 = int(w * 0.85)
+            
+            cropped_frame = frame[crop_y1:crop_y2, crop_x1:crop_x2]
+
             # 2. Preprocess
             t2 = time.perf_counter()
-            processed = Preprocessor.process(frame)
+            processed = Preprocessor.process(cropped_frame)
             telemetry["preprocess_ms"] += int((time.perf_counter() - t2) * 1000)
 
-            # 3. Detect plate region
+            # 3. Detect plate region (Runs on the deeply cropped ROI for massive speedup)
             t4 = time.perf_counter()
-            rois_info = PlateDetector.detect(frame, processed)
+            rois_info = PlateDetector.detect(cropped_frame, processed)
             telemetry["detection_ms"] += int((time.perf_counter() - t4) * 1000)
 
             if not rois_info:

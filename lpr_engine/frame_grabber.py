@@ -3,8 +3,12 @@ import time
 import threading
 import logging
 import os
+import urllib.parse
+import requests
+from requests.auth import HTTPDigestAuth
 from typing import Dict, Optional
 import numpy as np
+from .config import FRAMES_TO_GRAB
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +34,12 @@ class CameraShutter:
         self.lock = threading.Lock()
         
         logger.info(f"[{self.cam_id}] Connecting strictly to RTSP stream...")
-        self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
-        # KEY: Tell OpenCV to limit its internal buffer to precisely 1 frame
+        
+        self.cap = cv2.VideoCapture()
+        # KEY BUGFIX: You MUST set BUFFERSIZE=1 BEFORE calling open() on an RTSP stream!
+        # Otherwise FFmpeg ignores it and builds a massive 50s internal queue!
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG)
         
         self.running = True
         self.thread = threading.Thread(
@@ -49,27 +56,19 @@ class CameraShutter:
                 time.sleep(2)  # Back-off before reconnecting
                 logger.info(f"[{self.cam_id}] Reconnecting stream...")
                 self.cap.release()
-                self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
+                
+                self.cap = cv2.VideoCapture()
                 self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG)
                 continue
                 
-            # Calling read() continuously is sometimes not enough for FFmpeg over TCP.
-            # We must aggressively drain the buffer using grab() which is extremely fast.
-            # Then we only retrieve() the final frame in the buffer.
-            ret = self.cap.grab()
+            # Calling read() natively pulls from the 1-frame FFmpeg buffer queue.
+            # This blocks until a frame arrives, effectively sleeping the thread naturally.
+            ret, frame = self.cap.read()
             if ret:
-                # Discard buffered frames as fast as possible if they piled up
-                # Note: OpenCV's internal queue on TCP can still grow, this drains it.
-                while True:
-                    has_next = self.cap.grab()
-                    if not has_next:
-                        break
-                        
-                ret, frame = self.cap.retrieve()
-                if ret:
-                    with self.lock:
-                        self.latest_frame = frame  # Always overwrite instantly
-                        self.frame_time = time.time()
+                with self.lock:
+                    self.latest_frame = frame  # Always overwrite instantly
+                    self.frame_time = time.time()
             else:
                 logger.warning(f"[{self.cam_id}] Frame read failed. Forcing reconnect.")
                 self.cap.release()
@@ -93,6 +92,68 @@ class CameraShutter:
         if self.cap:
             self.cap.release()
 
+class HttpSnapshotGrabber:
+    """
+    Stateless HTTP Snapshot Grabber (The "Hikvision" Architecture).
+    Directly hits the camera's CGI/ISAPI endpoint to pull the absolute latest
+    hardware frame instantly on demand.
+    """
+    def __init__(self, cam_id: str, http_url: str):
+        self.cam_id = cam_id
+        
+        # Parse HTTP URL to extract embedded credentials if they exist
+        parsed = urllib.parse.urlparse(http_url)
+        self.username = urllib.parse.unquote(parsed.username) if parsed.username else ""
+        self.password = urllib.parse.unquote(parsed.password) if parsed.password else ""
+        self.ip = parsed.hostname
+        self.port = f":{parsed.port}" if parsed.port else ""
+        
+        # Reconstruct the clean URL without creds for requests
+        self.snapshot_url = f"{parsed.scheme}://{self.ip}{self.port}{parsed.path}"
+        if parsed.query: self.snapshot_url += f"?{parsed.query}"
+        
+        logger.info(f"[{self.cam_id}] Initializing HTTP Snapshot Grabber for {self.snapshot_url}...")
+        
+        self.session = requests.Session()
+        # Default to Digest auth (standard for Hikvision ISAPI / Dahua CGI)
+        if self.username and self.password:
+            self.session.auth = HTTPDigestAuth(self.username, self.password)
+
+    def capture_burst(self, num_frames=3) -> tuple[Optional[list], Optional[str]]:
+        """Fetch multiple frames instantly to catch the best focus."""
+        frames = []
+        
+        for _ in range(num_frames):
+            try:
+                resp = self.session.get(self.snapshot_url, timeout=2.0)
+                
+                # If Digest Auth failed, automatically try Basic Auth
+                if resp.status_code == 401 and isinstance(self.session.auth, HTTPDigestAuth):
+                    logger.warning(f"[{self.cam_id}] Digest Auth failed, falling back to Basic Auth.")
+                    self.session.auth = (self.username, self.password)
+                    resp = self.session.get(self.snapshot_url, timeout=2.0)
+                
+                if resp.status_code == 200:
+                    img_array = np.frombuffer(resp.content, dtype=np.uint8)
+                    frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+                    if frame is not None:
+                        frames.append(frame)
+                else:
+                    logger.error(f"[{self.cam_id}] Snapshot failed with status {resp.status_code}")
+                    
+            except requests.exceptions.Timeout:
+                logger.error(f"[{self.cam_id}] Snapshot request TCP timeout.")
+            except Exception as e:
+                logger.error(f"[{self.cam_id}] Snapshot fetch failed: {e}")
+                
+            # Allow the camera hardware to generate the next frame
+            time.sleep(0.1)
+
+        if not frames:
+            return None, "CAMERA_TIMEOUT"
+            
+        return frames, None
+
 
 # ── Backwards-compatible FrameGrabber ────────────────────────────────────────
 # Keeps existing pipeline.py working natively.
@@ -111,6 +172,11 @@ class CameraManager:
                 "alive": age_ms > 0 and age_ms < 10000,
                 "last_frame_age_ms": age_ms,
             }
+        for cam_id, _ in FrameGrabber._http_grabbers.items():
+            result[cam_id] = {
+                "alive": True,
+                "last_frame_age_ms": 0, # HTTP is always perfectly live
+            }
         return result
         
     def add_camera(self, cam_id: str, url: str, wait_ready: bool = True):
@@ -119,10 +185,13 @@ class CameraManager:
 
 class FrameGrabber:
     """
-    Manages active CameraShutter instances silently.
+    Manages active CameraShutter and HttpSnapshotGrabber instances silently.
+    Routes the request dynamically based on the URL protocol.
     """
     _shutters: Dict[str, CameraShutter] = {}
+    _http_grabbers: Dict[str, HttpSnapshotGrabber] = {}
     _reg_lock = threading.Lock()
+    _url_to_id: Dict[str, str] = {} # Fix for pipeline startup pre-connect
 
     @classmethod
     def _ensure_active(cls, rtsp_url: str) -> CameraShutter:
@@ -133,20 +202,35 @@ class FrameGrabber:
                     cls._shutters[cam_id] = CameraShutter(cam_id, rtsp_url)
                     
                     # Optional: wait up to 10s for the very first frame to arrive on boot
+                    # This prevents NO_FRAME_YET on the very first API call when the thread is just starting
                     deadline = time.time() + 10.0
                     while time.time() < deadline:
-                        if cls._shutters[cam_id].latest_frame is not None:
-                            break
-                        time.sleep(0.05)
+                        with cls._shutters[cam_id].lock:
+                            if cls._shutters[cam_id].latest_frame is not None:
+                                break
+                        time.sleep(0.02)
                         
         return cls._shutters[cam_id]
 
     @classmethod
-    def get_frames(cls, rtsp_url: str) -> tuple[Optional[list], Optional[str]]:
-        shutter = cls._ensure_active(rtsp_url)
-        frame, error = shutter.capture()
+    def _ensure_http_active(cls, http_url: str) -> HttpSnapshotGrabber:
+        cam_id = f"cam_{abs(hash(http_url)) % 100000:05d}"
+        if cam_id not in cls._http_grabbers:
+            with cls._reg_lock:
+                if cam_id not in cls._http_grabbers:
+                    cls._http_grabbers[cam_id] = HttpSnapshotGrabber(cam_id, http_url)
+        return cls._http_grabbers[cam_id]
 
-        if error:
-            return None, error
-
-        return [frame], None
+    @classmethod
+    def get_frames(cls, camera_url: str) -> tuple[Optional[list], Optional[str]]:
+        if camera_url.startswith("http://") or camera_url.startswith("https://"):
+            grabber = cls._ensure_http_active(camera_url)
+            # Capture rapid frames as defined in config, pipeline.py will pick the clearest plate
+            frames, error = grabber.capture_burst(num_frames=FRAMES_TO_GRAB)
+            return frames, error
+        else:
+            shutter = cls._ensure_active(camera_url)
+            frame, error = shutter.capture()
+            if error:
+                return None, error
+            return [frame], None
