@@ -105,7 +105,8 @@ def _parse_bool(value: str) -> bool:
 def load_settings(config_path: str | Path | None = None) -> Settings:
     """Load settings from config.ini. Missing keys fall back to defaults."""
     path = Path(config_path) if config_path else _CONFIG_PATH
-    cfg = configparser.ConfigParser(inline_comment_prefixes=(";", "#"))
+    # Disable inline comments so URLs with `#` or similar don't get truncated
+    cfg = configparser.ConfigParser()
 
     settings = Settings()
 

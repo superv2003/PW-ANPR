@@ -36,10 +36,15 @@ class CameraShutter:
         logger.info(f"[{self.cam_id}] Connecting strictly to RTSP stream...")
         
         self.cap = cv2.VideoCapture()
-        # KEY BUGFIX: You MUST set BUFFERSIZE=1 BEFORE calling open() on an RTSP stream!
-        # Otherwise FFmpeg ignores it and builds a massive 50s internal queue!
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG)
+        # Force strict RTSP over TCP via explicit dictionary parameters to bypass OS env issues
+        # Enforce 3-second timeout instead of 30-second default
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+        params = [
+            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
+            cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000,
+            cv2.CAP_PROP_BUFFERSIZE, 1
+        ]
+        self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG, params)
         
         self.running = True
         self.thread = threading.Thread(
@@ -58,8 +63,12 @@ class CameraShutter:
                 self.cap.release()
                 
                 self.cap = cv2.VideoCapture()
-                self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG)
+                params = [
+                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 3000,
+                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, 3000,
+                    cv2.CAP_PROP_BUFFERSIZE, 1
+                ]
+                self.cap.open(self.rtsp_url, cv2.CAP_FFMPEG, params)
                 continue
                 
             # Calling read() natively pulls from the 1-frame FFmpeg buffer queue.
